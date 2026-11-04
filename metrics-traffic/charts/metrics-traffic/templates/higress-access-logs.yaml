@@ -1,0 +1,290 @@
+{{- if .Values.higressAccessLogs.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "metrics-traffic.fullname" . }}-higress-logs
+  labels:
+    {{- include "metrics-traffic.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "metrics-traffic.fullname" . }}-higress-logs
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "nodes", "pods", "configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["create", "update", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets", "deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "metrics-traffic.fullname" . }}-higress-logs
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "metrics-traffic.fullname" . }}-higress-logs
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "metrics-traffic.fullname" . }}-higress-logs
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "metrics-traffic.fullname" . }}-higress-logs
+data:
+  vector.yaml: |
+    data_dir: /vector-data-dir
+    enrichment_tables:
+      workloads:
+        type: file
+        file:
+          path: /etc/vector/workloads/workloads.csv
+          encoding:
+            type: csv
+        schema:
+          upstream_ip: string
+          upstream_pod_name: string
+          workload_kind: string
+          workload_name: string
+          workload_title: string
+          workload_namespace: string
+      services:
+        type: file
+        file:
+          path: /etc/vector/workloads/services.csv
+          encoding:
+            type: csv
+        schema:
+          upstream_service: string
+          upstream_namespace: string
+          workload_kind: string
+          workload_name: string
+          workload_title: string
+          workload_namespace: string
+    sources:
+      kubernetes_logs:
+        type: kubernetes_logs
+        extra_label_selector: app=higress-gateway
+        self_node_name: ${VECTOR_SELF_NODE_NAME}
+    transforms:
+      only_gateway:
+        type: filter
+        inputs: [kubernetes_logs]
+        condition: '.kubernetes.container_name == "higress-gateway"'
+      normalize:
+        type: remap
+        inputs: [only_gateway]
+        drop_on_error: true
+        source: |
+          # Docker adds "\\(" and "\\)" to its User-Agent. Those are not
+          # valid JSON escape sequences, so normalize only invalid escapes
+          # before parsing and keep valid JSON escapes untouched.
+          message = replace(string!(.message), r'\\([^"\\/bfnrtu])', "$${1}")
+          parsed = parse_json!(message)
+          . = parsed
+          .log_type = "higress_access"
+          .path = split(string!(.path), "?")[0]
+          route = split(string(.route_name) ?? "", "/")
+          .route_namespace = if length(route) == 2 { route[0] } else { "" }
+          .route = if length(route) == 2 { route[1] } else { "" }
+          cluster = parse_regex(string(.upstream_cluster) ?? "", r'^outbound\|(?P<port>[^|]+)\|\|(?P<service>[^.]+)\.(?P<namespace>[^.]+)\.svc') ?? {}
+          .upstream_port = if exists(cluster.port) { cluster.port } else { "" }
+          .upstream_service = if exists(cluster.service) { cluster.service } else { "" }
+          .upstream_namespace = if exists(cluster.namespace) { cluster.namespace } else { "" }
+          .upstream_ip = split(string(.upstream_host) ?? "", ":")[0]
+          upstream_service_name = string(.upstream_service) ?? ""
+          workload = get_enrichment_table_record("workloads", {"upstream_ip": .upstream_ip}) ?? {}
+          if (string(workload.workload_name) ?? "") == "" {
+            workload = get_enrichment_table_record("services", {"upstream_service": .upstream_service, "upstream_namespace": .upstream_namespace}) ?? {}
+          }
+          if (string(workload.workload_name) ?? "") == "" && upstream_service_name != "" && upstream_service_name != "-" {
+            workload = {
+              "workload_kind": "Service",
+              "workload_name": upstream_service_name,
+              "workload_title": upstream_service_name,
+              "workload_namespace": .upstream_namespace,
+            }
+          }
+          .upstream_pod_name = string(workload.upstream_pod_name) ?? ""
+          .workload_kind = string(workload.workload_kind) ?? ""
+          .workload_name = string(workload.workload_name) ?? ""
+          .workload_title = string(workload.workload_title) ?? .workload_name
+          .workload_namespace = string(workload.workload_namespace) ?? ""
+          .duration_ms = to_int(.duration) ?? 0
+          .bytes_received = to_int(.bytes_received) ?? 0
+          .bytes_sent = to_int(.bytes_sent) ?? 0
+          .status_code = to_int(.response_code) ?? 0
+          del(.duration)
+          del(.response_code)
+          del(.request_id)
+          del(.trace_id)
+          del(.user_agent)
+          del(.x_forwarded_for)
+          del(.downstream_local_address)
+          del(.downstream_remote_address)
+          del(.upstream_local_address)
+          del(.ai_log)
+          del(.istio_policy_status)
+    sinks:
+      victoria_logs:
+        type: http
+        inputs: [normalize]
+        uri: {{ .Values.logsBaseUrl }}/insert/jsonline?_stream_fields=log_type,route_namespace,authority&_time_field=start_time
+        method: post
+        framing:
+          method: newline_delimited
+        encoding:
+          codec: json
+        request:
+          headers:
+            Content-Type: application/stream+json
+        healthcheck:
+          enabled: false
+    tests:
+      - name: sanitize_higress_access_log
+        inputs:
+          - insert_at: normalize
+            type: log
+            log_fields:
+              message: '{"authority":"demo.example.com","path":"/api/orders?ticket=secret","route_name":"default/demo","upstream_cluster":"outbound|8080||demo.default.svc.cluster.local","upstream_host":"10.42.0.8:8080","duration":"12","bytes_received":"10","bytes_sent":"20","response_code":"200","request_id":"sensitive"}'
+        outputs:
+          - extract_from: normalize
+            conditions:
+              - type: vrl
+                source: '.path == "/api/orders" && .route_namespace == "default" && .upstream_service == "demo" && !exists(.request_id)'
+      - name: accepts_docker_user_agent_with_invalid_json_escape
+        inputs:
+          - insert_at: normalize
+            type: log
+            log_fields:
+              message: '{"authority":"reg.example.com","path":"/v2/nginx/blobs/sha256:abc","route_name":"default/registry","upstream_cluster":"outbound|8000||registry.default.svc.cluster.local","upstream_host":"10.42.0.9:8000","duration":"81","bytes_received":"99","bytes_sent":"33328253","response_code":"200","user_agent":"docker/29.3.1 UpstreamClient(Docker-Client/29.3.1 \\(linux\\))"}'
+        outputs:
+          - extract_from: normalize
+            conditions:
+              - type: vrl
+                source: '.path == "/v2/nginx/blobs/sha256:abc" && .bytes_sent == 33328253 && !exists(.user_agent)'
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "metrics-traffic.fullname" . }}-higress-logs
+  labels:
+    {{- include "metrics-traffic.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "metrics-traffic.fullname" . }}-higress-logs
+  template:
+    metadata:
+      annotations:
+        # Vector only reads its config at startup. Make every Helm revision
+        # replace the Pod so a ConfigMap update is applied immediately.
+        w7panel.io/config-revision: {{ .Release.Revision | quote }}
+      labels:
+        app.kubernetes.io/name: {{ include "metrics-traffic.fullname" . }}-higress-logs
+    spec:
+      serviceAccountName: {{ include "metrics-traffic.fullname" . }}-higress-logs
+      containers:
+        - name: vector
+          image: "{{ .Values.higressAccessLogs.image.repository }}:{{ .Values.higressAccessLogs.image.tag }}"
+          imagePullPolicy: {{ .Values.higressAccessLogs.image.pullPolicy }}
+          args: ["--config", "/etc/vector/vector.yaml"]
+          env:
+            - name: VECTOR_SELF_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          resources:
+            {{- toYaml .Values.higressAccessLogs.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/vector
+              readOnly: true
+            - name: data
+              mountPath: /vector-data-dir
+            - name: pod-logs
+              mountPath: /var/log/pods
+              readOnly: true
+            - name: workloads
+              mountPath: /etc/vector/workloads
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "metrics-traffic.fullname" . }}-higress-logs
+        - name: data
+          hostPath:
+            path: /var/lib/w7panel-metrics/vector
+            type: DirectoryOrCreate
+        - name: pod-logs
+          hostPath:
+            path: /var/log/pods
+            type: Directory
+        - name: workloads
+          configMap:
+            name: {{ include "metrics-traffic.fullname" . }}-traffic-workloads
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "metrics-traffic.fullname" . }}-traffic-workloads
+data:
+  workloads.csv: |
+    upstream_ip,upstream_pod_name,workload_kind,workload_name,workload_title,workload_namespace
+  services.csv: |
+    upstream_service,upstream_namespace,workload_kind,workload_name,workload_title,workload_namespace
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "metrics-traffic.fullname" . }}-traffic-workloads
+  labels:
+    {{- include "metrics-traffic.labels" . | nindent 4 }}
+spec:
+  schedule: "* * * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: {{ include "metrics-traffic.fullname" . }}-higress-logs
+          restartPolicy: OnFailure
+          containers:
+            - name: resolve-workloads
+              image: "ccr.ccs.tencentyun.com/afan-public/kubectl:latest"
+              command: ["/bin/sh", "-ec"]
+              args:
+                - |
+                  output=/tmp/workloads.csv
+                  services=/tmp/services.csv
+                  tab=$(printf '\t')
+                  printf 'upstream_ip,upstream_pod_name,workload_kind,workload_name,workload_title,workload_namespace\n' > "$output"
+                  printf 'upstream_service,upstream_namespace,workload_kind,workload_name,workload_title,workload_namespace\n' > "$services"
+                  kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{.status.podIP}{"\t"}{.metadata.ownerReferences[0].kind}{"\t"}{.metadata.ownerReferences[0].name}{"\n"}{end}' |
+                  while IFS="$tab" read -r namespace pod ip kind name; do
+                    [ -n "$ip" ] || continue
+                    case "$kind" in
+                      ReplicaSet) owner=$(kubectl -n "$namespace" get replicaset "$name" -o jsonpath='{.metadata.ownerReferences[0].kind}{"\t"}{.metadata.ownerReferences[0].name}' 2>/dev/null || true); [ -n "$owner" ] && { kind=${owner%%"$tab"*}; name=${owner#*"$tab"}; } ;;
+                      Job) owner=$(kubectl -n "$namespace" get job "$name" -o jsonpath='{.metadata.ownerReferences[0].kind}{"\t"}{.metadata.ownerReferences[0].name}' 2>/dev/null || true); [ -n "$owner" ] && { kind=${owner%%"$tab"*}; name=${owner#*"$tab"}; } ;;
+                    esac
+                    case "$kind" in Deployment|StatefulSet|DaemonSet|CronJob)
+                      title=$(kubectl -n "$namespace" get "$kind" "$name" -o jsonpath='{.metadata.annotations.w7\\.cc\\.app/title}' 2>/dev/null || true)
+                      [ -n "$title" ] || title=$(kubectl -n "$namespace" get "$kind" "$name" -o jsonpath='{.metadata.annotations.title}' 2>/dev/null || true)
+                      [ -n "$title" ] || title="$name"
+                      printf '%s,%s,%s,%s,%s,%s\n' "$ip" "$pod" "$kind" "$name" "$title" "$namespace" >> "$output"
+                      ;;
+                    esac
+                  done
+                  awk -F, 'NR > 1 { print $4 "," $6 "," $3 "," $4 "," $5 "," $6 }' "$output" | sort -u >> "$services"
+                  kubectl -n {{ .Release.Namespace }} create configmap {{ include "metrics-traffic.fullname" . }}-traffic-workloads --from-file=workloads.csv="$output" --from-file=services.csv="$services" --dry-run=client -o yaml | kubectl apply -f -
+{{- end }}

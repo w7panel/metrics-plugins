@@ -1,0 +1,25 @@
+image:
+  repository: metrics-traffic
+  tag: ""
+  pullPolicy: IfNotPresent
+logsBaseUrl: http://vlsingle-w7panel-metrics.default.svc:9428
+metricsBaseUrl: http://vmsingle-w7panel-metrics-single.default.svc:8429
+panelApiUrl: http://w7panel-offline.default.svc.cluster.local:8000
+microapp:
+  title: 流量监测
+higressMetrics:
+  enabled: true
+  namespace: higress-system
+higressAccessLogs:
+  enabled: true
+  image:
+    repository: timberio/vector
+    tag: "0.49.0-debian"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi

@@ -1,0 +1,8 @@
+image:
+  repository: metrics-audit
+  tag: ""
+  pullPolicy: IfNotPresent
+logsBaseUrl: http://vlsingle-w7panel-metrics.default.svc:9428
+panelApiUrl: http://w7panel-offline.default.svc.cluster.local:8000
+microapp:
+  title: 审计日志

@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metrics-audit-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: metrics-audit-api}
+  template:
+    metadata:
+      labels: {app: metrics-audit-api}
+    spec:
+      containers:
+        - name: api
+          image: "{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 8080
+          env:
+            - name: LOGS_BASE_URL
+              value: {{ .Values.logsBaseUrl | quote }}
+            - name: PANEL_API_URL
+              value: {{ .Values.panelApiUrl | quote }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: metrics-audit
+spec:
+  selector: {app: metrics-audit-api}
+  ports:
+    - port: 8080
+      targetPort: 8080

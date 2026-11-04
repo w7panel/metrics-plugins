@@ -1,0 +1,8 @@
+**/node_modules/
+**/dist/
+**/dist.zip
+*.tgz
+.go-cache/
+.go-tmp/
+.go-modcache/
+.npm-cache/
