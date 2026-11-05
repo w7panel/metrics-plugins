@@ -2,17 +2,16 @@ VERSION ?= 0.1.0
 
 .PHONY: test build-ui build-helm build-image package
 test:
-	mkdir -p ../.go-cache ../.go-tmp ../.go-modcache
-	cd .. && GOCACHE="$(abspath ../.go-cache)" GOTMPDIR="$(abspath ../.go-tmp)" GOMODCACHE="$(abspath ../.go-modcache)" go test ./metrics-audit/backend ./internal/identity
+	go test ./...
 
 build-ui:
-	cd frontend && npm ci --cache ../../.npm-cache && npm run build
+	cd frontend && npm ci && npm run build
 	cd frontend/dist && zip -q -FS -r ../dist.zip .
 
 build-helm:
 	helm package charts/metrics-audit --version $(VERSION) --app-version $(VERSION) -d .
 
 build-image:
-	docker build -f Dockerfile -t metrics-audit:$(VERSION) ..
+	docker build -t metrics-audit:$(VERSION) .
 
 package: test build-ui build-helm build-image

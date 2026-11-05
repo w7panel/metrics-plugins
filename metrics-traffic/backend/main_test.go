@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/w7panel/metrics-plugins/internal/identity"
+	"github.com/w7panel/metrics-plugins/metrics-traffic/internal/identity"
 )
 
 func TestNormalUserCannotOverrideNamespace(t *testing.T) {

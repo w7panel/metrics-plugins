@@ -2,8 +2,8 @@ FROM golang:1.26-alpine AS build
 WORKDIR /src
 COPY go.mod ./
 COPY internal ./internal
-COPY metrics-audit/backend ./metrics-audit/backend
-RUN CGO_ENABLED=0 go build -o /metrics-audit ./metrics-audit/backend
+COPY backend ./backend
+RUN CGO_ENABLED=0 go build -o /metrics-audit ./backend
 
 FROM scratch
 COPY --from=build /metrics-audit /metrics-audit

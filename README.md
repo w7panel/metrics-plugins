@@ -9,7 +9,7 @@ This repository contains two independently packaged monitoring applications:
 
 Both use the existing `w7panel-metrics` VictoriaLogs service and PVC. Install `w7panel-metrics` first. The plugins default to the `default` namespace and the existing service names; override the Chart URLs for other installations.
 
-Each directory has `make package VERSION=x.y.z`, producing a frontend `dist.zip`, Helm `.tgz`, and local API image. Attach the frontend zip and Helm package to the corresponding ZPK application, and publish the API image to the configured image registry. Configure each MicroApp backend URL to `http://metrics-audit.default.svc:8080` or `http://metrics-traffic.default.svc:8080`. Frontends prefer the host `microappProxy`; older hosts use the preserved `/panel-api/v1/audit/*` or `/panel-api/v1/traffic/*` compatibility routes.
+Each directory is an independent Go module and Docker build context. Run `make package VERSION=x.y.z` inside either directory to produce a frontend `dist.zip`, Helm `.tgz`, and local API image. Attach the frontend zip and Helm package to the corresponding ZPK application, and publish the API image to the configured image registry. Configure each MicroApp backend URL to `http://metrics-audit.default.svc:8080` or `http://metrics-traffic.default.svc:8080`. Frontends prefer the host `microappProxy`; older hosts use the preserved `/panel-api/v1/audit/*` or `/panel-api/v1/traffic/*` compatibility routes.
 
 The plugin API accepts a Panel token only after the host validates it via `/panel-api/v1/metrics/plugin-identity`. The API services are intended for cluster-internal access. The traffic API ServiceAccount may list Pods to preserve the existing Pod name fallback, while query filters still enforce the verified user's namespace.
 

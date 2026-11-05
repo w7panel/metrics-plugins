@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/w7panel/metrics-plugins/internal/identity"
+	"github.com/w7panel/metrics-plugins/metrics-traffic/internal/identity"
 )
 
 func trafficHandler(w http.ResponseWriter, r *http.Request) {
