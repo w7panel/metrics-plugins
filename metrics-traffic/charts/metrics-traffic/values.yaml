@@ -1,5 +1,5 @@
 image:
-  repository: metrics-traffic
+  repository: ccr.ccs.tencentyun.com/afan-public/metrics-traffic
   tag: ""
   pullPolicy: IfNotPresent
 logsBaseUrl: http://vlsingle-w7panel-metrics.default.svc:9428

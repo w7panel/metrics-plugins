@@ -1,5 +1,5 @@
 image:
-  repository: metrics-audit
+  repository: ccr.ccs.tencentyun.com/afan-public/metrics-audit
   tag: ""
   pullPolicy: IfNotPresent
 logsBaseUrl: http://vlsingle-w7panel-metrics.default.svc:9428
