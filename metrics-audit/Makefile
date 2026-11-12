@@ -15,8 +15,8 @@ test:
 	go test ./...
 
 build-ui:
-	cd frontend && npm ci && npm run build
-	cd frontend/dist && zip -q -FS -r ../dist.zip .
+	cd ui && npm ci && npm run build
+	cd ui/dist && zip -q -FS -r ../dist.zip .
 
 build-helm:
 	helm package charts/metrics-audit --version $(VERSION) --app-version $(VERSION) -d .
@@ -28,12 +28,12 @@ build-image: docker-build
 	docker push $(IMAGE_REPO):$(VERSION)
 
 push-zpk:
-	@test -f "$(CHART_PACKAGE)" && test -f frontend/dist.zip || { echo 'Build Helm and UI first' >&2; exit 1; }
+	@test -f "$(CHART_PACKAGE)" && test -f ui/dist.zip || { echo 'Build Helm and UI first' >&2; exit 1; }
 	@test -n "$${ZPK_IDC_PASSWORD:-$${PASSWORD:-}}" || { echo 'Set ZPK_IDC_PASSWORD or PASSWORD' >&2; exit 2; }
 	@zpk login --username=w7admin --password="$${ZPK_IDC_PASSWORD:-$${PASSWORD}}" --host=zpk.w7.cc
 	zpk use --name=metrics-audit
 	zpk attach add --path="$(CHART_PACKAGE)" --type=helm
-	zpk attach add --path=frontend/dist.zip --type=frontend
+	zpk attach add --path=ui/dist.zip --type=frontend
 	zpk push
 
 package: test build-ui build-helm docker-build
