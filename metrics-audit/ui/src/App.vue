@@ -1,5 +1,5 @@
 <template>
-    <div class="padding-20 audit-page">
+    <div class="audit-page">
         <a-alert v-if="status.message" class="mb-20" :type="status.enabled && status.installed ? 'success' : 'warning'">
             <template #title>{{ statusTitle }}</template>
             <div>{{ status.message }}</div>
