@@ -49,7 +49,7 @@
                 :data="list"
                 :pagination="false"
                 :bordered="false"
-                :scroll="{ x: activeTab === 'operation' ? 1240 : 710 }"
+                :scroll="{ x: activeTab === 'operation' ? 1240 : 710, maxHeight: 'max(240px, calc(100vh - 340px))' }"
                 row-key="rowKey"
             >
                 <template #columns>
