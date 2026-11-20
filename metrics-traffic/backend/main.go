@@ -57,6 +57,8 @@ func trafficHandler(w http.ResponseWriter, r *http.Request) {
 		rows, err = client.Domains(r.Context(), params)
 	case "/api/v1/traffic/urls":
 		rows, err = client.URLs(r.Context(), params)
+	case "/api/v1/traffic/waf-logs":
+		rows, err = client.WAFLogs(r.Context(), params)
 	default:
 		http.NotFound(w, r)
 		return
@@ -75,6 +77,8 @@ func trafficHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	case "/api/v1/traffic/series":
 		identity.JSON(w, http.StatusOK, rows)
+	case "/api/v1/traffic/waf-logs":
+		identity.JSON(w, http.StatusOK, wafLogRows(rows))
 	default:
 		keys := map[string][]string{
 			"/api/v1/traffic/apps":    {"workload_name", "workload_kind", "workload_title", "workload_namespace"},
@@ -96,6 +100,14 @@ func trafficHandler(w http.ResponseWriter, r *http.Request) {
 		list, total := Paginate(rows, params.Page, params.PageSize)
 		identity.JSON(w, http.StatusOK, map[string]any{"list": list, "total": total, "page": params.Page, "pageSize": params.PageSize})
 	}
+}
+
+func wafLogRows(rows []map[string]any) []map[string]any {
+	logs := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		logs = append(logs, map[string]any{"time": row["_time"], "domain": row["authority"], "path": row["path"], "status": row["status_code"]})
+	}
+	return logs
 }
 
 func parseTrafficParams(r *http.Request, user identity.User) (QueryParams, error) {

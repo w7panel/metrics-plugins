@@ -39,6 +39,26 @@ func TestBuildFilterEscapesAndScopesNamespace(t *testing.T) {
 	}
 }
 
+func TestWAFLogQueryKeepsTenantAndDomainScope(t *testing.T) {
+	params := QueryParams{Namespace: "tenant-a", Domain: "demo.example.com"}
+	query := buildWAFLogsQuery(params)
+	for _, part := range []string{`route_namespace:"tenant-a"`, `authority:"demo.example.com"`, `response_code_details:~`, `limit 100`} {
+		if !strings.Contains(query, part) {
+			t.Fatalf("missing %s in %s", part, query)
+		}
+	}
+}
+
+func TestWAFLogRowsReturnOnlyDisplayFields(t *testing.T) {
+	rows := wafLogRows([]map[string]any{{"_time": "2026-11-20T10:55:30Z", "authority": "example.com", "path": "/blocked", "status_code": "403", "upstream_cluster": "private"}})
+	if len(rows) != 1 || rows[0]["time"] != "2026-11-20T10:55:30Z" || rows[0]["status"] != "403" {
+		t.Fatalf("unexpected WAF log row: %#v", rows)
+	}
+	if _, exposed := rows[0]["upstream_cluster"]; exposed {
+		t.Fatal("WAF log response leaked unrelated access-log fields")
+	}
+}
+
 func TestBuildFilterScopesWorkload(t *testing.T) {
 	filter := buildFilter(QueryParams{Namespace: "default", WorkloadKind: "Deployment", WorkloadName: "checkout"})
 	if !strings.Contains(filter, `workload_kind:"Deployment"`) || !strings.Contains(filter, `workload_name:"checkout"`) {

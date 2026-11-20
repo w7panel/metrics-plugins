@@ -1,6 +1,6 @@
 # Traffic monitoring plugin
 
-`ui/` is migrated from `w7panel-traffic`. `backend/` serves the seven traffic read APIs. The Chart owns Higress Scrape, Vector access-log collection, workload snapshots, and the query API. VictoriaLogs and its PVC remain in `w7panel-metrics`.
+`ui/` is migrated from `w7panel-traffic`. `backend/` serves traffic read APIs and `GET /api/v1/traffic/waf-logs`, which returns up to 100 WAF blocked requests from VictoriaLogs for the verified user's namespace and optional `domain`. The Chart owns Higress Scrape, Vector access-log collection, workload snapshots, and the query API. VictoriaLogs and its PVC remain in `w7panel-metrics`. The WAF response includes time, domain, path, and status; Vector does not retain rule IDs or client IPs.
 
 Run `make package VERSION=x.y.z` for local release inputs, or log Docker in to `ccr.ccs.tencentyun.com`, set `ZPK_IDC_PASSWORD`, and run `make full VERSION=x.y.z` to build the UI and Helm package, push the API image, and publish both attachments to the `metrics-traffic` ZPK application. `make build-ui`, `make build-helm`, `make build-image`, and `make push-zpk` run the individual stages. With a MicroApp backend URL, requests use the Chart Service; without one, they use the Panel traffic proxy route. The query API derives namespace access from the verified Panel identity; client-supplied `namespace` is ignored for normal users.
 

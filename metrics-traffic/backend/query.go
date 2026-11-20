@@ -159,6 +159,14 @@ func (q *QueryClient) URLs(ctx context.Context, params QueryParams) ([]map[strin
 	return q.query(ctx, query, params.Range)
 }
 
+func (q *QueryClient) WAFLogs(ctx context.Context, params QueryParams) ([]map[string]any, error) {
+	return q.query(ctx, buildWAFLogsQuery(params), params.Range)
+}
+
+func buildWAFLogsQuery(params QueryParams) string {
+	return buildFilter(params) + ` response_code_details:~"^(waf|via_wasm::higress-system\\.w7panel-pluginwaf::waf)$" | sort by (_time desc) | limit 100`
+}
+
 func (q *QueryClient) Series(ctx context.Context, params QueryParams) ([]map[string]any, error) {
 	step := sanitizeStep(params.Step)
 	query := fmt.Sprintf(`%s | stats by (_time:%s, protocol, status_code) count() as requests, sum(bytes_received) as bytes_received, sum(bytes_sent) as bytes_sent`, buildFilter(params), step)
